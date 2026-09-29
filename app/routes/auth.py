@@ -1,0 +1,68 @@
+from fastapi import Request
+from app.schemas.user import UserLogin
+from app.auth.security import verify_password
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+
+from app.database.session import get_db
+from app.models.user import User
+from app.schemas.user import UserRegister
+from app.auth.security import hash_password
+
+router = APIRouter()
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+def register(user_data: UserRegister, db: Session = Depends(get_db)):
+    existing = db.execute(
+        select(User).where(
+            (User.username == user_data.username) | (User.email == user_data.email)
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username or email already registered",
+        )
+
+    new_user = User(
+        username=user_data.username,
+        email=user_data.email,
+        password_hash=hash_password(user_data.password),
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return {"id": new_user.id, "username": new_user.username}
+
+
+@router.post("/login")
+def login(user_data: UserLogin, request: Request, db: Session = Depends(get_db)):
+    user = db.execute(
+        select(User).where(User.username == user_data.username)
+    ).scalar_one_or_none()
+
+    if not user or not verify_password(user_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    request.session["user_id"] = user.id
+
+    return {"id": user.id, "username": user.username}
+
+from app.auth.dependencies import get_current_user
+
+@router.get("/me")
+def me(current_user: User = Depends(get_current_user)):
+    return {"id": current_user.id, "username": current_user.username, "xp": current_user.xp}
+
+@router.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {"message": "Logged out"}

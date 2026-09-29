@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Calculation - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Calculation - Level {{ level }}</h1>
+    <p id="timer">Time left: {{ duration }}s</p>
+    <p id="correct-count">Correct: 0</p>
+
+    <div class="card">
+        <h2 id="operation" style="text-align: center; font-size: 2em;">{{ operation.a }} {{ operation.op }} {{ operation.b }} = ?</h2>
+        <input type="number" id="answer-input" autofocus>
+        <button id="submit-btn">Submit</button>
+    </div>
+
+    <div id="result-area" style="display: none;"></div>
+
+    <p><a href="/dashboard">Back to dashboard</a></p>
+</div>
+
+    <script>
+        let timeLeft = {{ duration }};
+        const timerEl = document.getElementById("timer");
+        const opEl = document.getElementById("operation");
+        const inputEl = document.getElementById("answer-input");
+        const countEl = document.getElementById("correct-count");
+
+        const timer = setInterval(() => {
+            timeLeft--;
+            timerEl.textContent = `Time left: ${timeLeft}s`;
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                finish();
+            }
+        }, 1000);
+
+        async function submitAnswer() {
+            const value = parseInt(inputEl.value || "0");
+            inputEl.value = "";
+
+            const response = await fetch("/games/calculation/answer?value=" + value, { method: "POST" });
+            const data = await response.json();
+
+            countEl.textContent = `Correct: ${data.correct_count}`;
+            opEl.textContent = `${data.next_operation.a} ${data.next_operation.op} ${data.next_operation.b} = ?`;
+        }
+
+        async function finish() {
+            document.getElementById("operation").style.display = "none";
+            document.getElementById("answer-input").style.display = "none";
+            document.getElementById("submit-btn").style.display = "none";
+
+            const response = await fetch("/games/calculation/finish", { method: "POST" });
+            const data = await response.json();
+
+            const resultArea = document.getElementById("result-area");
+            resultArea.style.display = "block";
+            resultArea.innerHTML = `<div class="card"><h2>Score: ${data.score}, XP earned: ${data.xp_earned}</h2><p>Correct answers: ${data.correct_count}</p></div>`;
+        }
+
+        document.getElementById("submit-btn").addEventListener("click", submitAnswer);
+        inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") submitAnswer(); });
+    </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Memory - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Memory - Level {{ level }}</h1>
+
+    <div class="card">
+        <div id="sequence-display" style="font-size: 2.5em; text-align: center; letter-spacing: 0.2em;">
+            {% for digit in sequence %}{{ digit }}{% endfor %}
+        </div>
+
+        <div id="answer-area" style="display: none;">
+            <p>Enter the sequence you saw:</p>
+            <input type="text" id="answer-input" inputmode="numeric">
+            <button id="submit-btn">Submit</button>
+        </div>
+
+        <div id="result-area" style="display: none;"></div>
+    </div>
+
+    <p><a href="/dashboard">Back to dashboard</a></p>
+</div>
+
+    <script>
+        setTimeout(() => {
+            document.getElementById("sequence-display").style.display = "none";
+            document.getElementById("answer-area").style.display = "block";
+        }, 3000);
+
+        document.getElementById("submit-btn").addEventListener("click", async () => {
+            const answer = document.getElementById("answer-input").value;
+
+            const response = await fetch("/games/memory/submit?answer=" + encodeURIComponent(answer), {
+                method: "POST"
+            });
+            const data = await response.json();
+
+            document.getElementById("answer-area").style.display = "none";
+            const resultArea = document.getElementById("result-area");
+            resultArea.style.display = "block";
+
+            if (data.correct) {
+                resultArea.innerHTML = `Correct! Score: ${data.score}, XP earned: ${data.xp_earned}`;
+            } else {
+                resultArea.innerHTML = `Wrong sequence. Score: ${data.score}, XP earned: ${data.xp_earned}`;
+            }
+        });
+    </script>
+</body>
+</html>

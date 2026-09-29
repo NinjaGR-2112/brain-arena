@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, {{ user.username }}</h1>
+    
+        <div>
+            <div class="stat"><div class="value">{{ user.xp }}</div><div class="label">XP</div></div>
+            <div class="stat"><div class="value">{{ user.total_score }}</div><div class="label">Score</div></div>
+            <div class="stat"><div class="value">{{ user.games_played }}</div><div class="label">Games</div></div>
+        </div>
+    
+        <h2>Play a game</h2>
+        <div class="card"><a href="/games/memory">Memory</a> — Test your memory.</div>
+        <div class="card"><a href="/games/reaction">Reaction</a> — Test your reflexes.</div>
+        <div class="card"><a href="/games/calculation">Calculation</a> — Test your mental calculation speed.</div>
+    
+        <p><a href="/leaderboard">View leaderboard</a></p>
+    
+        <form action="/auth/logout" method="post">
+            <button type="submit">Logout</button>
+        </form>
+    </div>
+    </body>
+</html>

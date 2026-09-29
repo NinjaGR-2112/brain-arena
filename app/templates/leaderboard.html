@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Leaderboard - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Leaderboard</h1>
+    <p>Your rank: {{ your_rank if your_rank else "N/A" }}</p>
+
+    <div class="card">
+        <table>
+            <tr><th>Rank</th><th>Username</th><th>XP</th><th>Games played</th></tr>
+            {% for user in users %}
+            <tr>
+                <td>{{ start_rank + loop.index0 }}</td>
+                <td>{{ user.username }}</td>
+                <td>{{ user.xp }}</td>
+                <td>{{ user.games_played }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <p>
+        {% if page > 1 %}<a href="/leaderboard?page={{ page - 1 }}">Previous</a>{% endif %}
+        <a href="/leaderboard?page={{ page + 1 }}">Next</a>
+    </p>
+
+    <p><a href="/dashboard">Back to dashboard</a></p>
+</div>
+</body>
+</html>

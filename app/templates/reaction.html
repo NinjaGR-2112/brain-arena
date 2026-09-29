@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reaction - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Reaction Test</h1>
+    <p id="round-info">Round 1 / {{ total_rounds }}</p>
+
+    <div class="card">
+        <div id="game-area" style="width: 100%; height: 200px; background: #2a2f3a; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 2em; cursor: pointer;">
+            <span id="game-text">Click to start</span>
+        </div>
+    </div>
+
+    <div id="result-area"></div>
+
+    <p><a href="/dashboard">Back to dashboard</a></p>
+</div>
+
+    <script>
+        const gameArea = document.getElementById("game-area");
+        const gameText = document.getElementById("game-text");
+        const roundInfo = document.getElementById("round-info");
+        const resultArea = document.getElementById("result-area");
+
+        let waitingForSignal = false;
+        let signalReceived = false;
+
+        async function startRound() {
+            gameText.textContent = "WAIT...";
+            gameArea.style.background = "#e74c3c";
+            waitingForSignal = true;
+            signalReceived = false;
+
+            const response = await fetch("/games/reaction/wait", { method: "POST" });
+            await response.json();
+
+            waitingForSignal = false;
+            signalReceived = true;
+            gameText.textContent = "CLICK!";
+            gameArea.style.background = "#2ecc71";
+        }
+
+        gameArea.addEventListener("click", async () => {
+            if (waitingForSignal) {
+                gameText.textContent = "Too soon! Click to retry.";
+                gameArea.style.background = "#2a2f3a";
+                waitingForSignal = false;
+                return;
+            }
+
+            if (!signalReceived) {
+                startRound();
+                return;
+            }
+
+            signalReceived = false;
+            const response = await fetch("/games/reaction/click", { method: "POST" });
+            const data = await response.json();
+
+            resultArea.innerHTML += `<div class="card">Round ${data.round_number}: ${data.reaction_time_ms} ms (score: ${data.round_score})</div>`;
+
+            if (data.game_finished) {
+                resultArea.innerHTML += `<div class="card"><h2>Final score: ${data.final_score}, XP earned: ${data.xp_earned}</h2></div>`;
+                gameText.textContent = "Done!";
+                gameArea.style.background = "#2a2f3a";
+            } else {
+                roundInfo.textContent = `Round ${data.round_number + 1} / {{ total_rounds }}`;
+                gameText.textContent = "Click to continue";
+                gameArea.style.background = "#2a2f3a";
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+:root {
+    --bg: #0d0f14;
+    --bg-card: #161a23;
+    --accent: #6c5ce7;
+    --accent-hover: #8272f0;
+    --text: #e6e6e6;
+    --text-dim: #9aa0ac;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --border: #2a2f3a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    padding: 2rem;
+    line-height: 1.5;
+}
+
+h1, h2 {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+a:hover { color: var(--accent-hover); }
+
+.container {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+button, .btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    cursor: pointer;
+}
+button:hover, .btn:hover { background: var(--accent-hover); }
+
+input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 0.5rem;
+    font-size: 1rem;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+th { color: var(--text-dim); font-weight: 600; }
+
+.stat {
+    display: inline-block;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.8rem 1.2rem;
+    margin-right: 0.6rem;
+}
+.stat .value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+.stat .label { font-size: 0.8rem; color: var(--text-dim); }
