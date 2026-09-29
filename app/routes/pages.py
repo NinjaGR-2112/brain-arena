@@ -263,3 +263,13 @@ def leaderboard(request: Request, page: int = 1, current_user=Depends(get_curren
         name="leaderboard.html",
         context={"users": users, "page": page, "your_rank": your_rank, "start_rank": offset + 1},
     )
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html", context={})
+
+
+@router.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    return templates.TemplateResponse(request=request, name="register.html", context={})

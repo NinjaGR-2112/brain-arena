@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container" style="max-width: 400px; padding-top: 4rem;">
+    <h1>Login</h1>
+
+    <div class="card">
+        <input type="text" id="username" placeholder="Username"><br><br>
+        <input type="password" id="password" placeholder="Password"><br><br>
+        <button id="login-btn">Login</button>
+        <p id="error-msg" style="color: var(--danger); display: none;"></p>
+    </div>
+
+    <p>No account? <a href="/register">Register</a></p>
+</div>
+
+    <script>
+        document.getElementById("login-btn").addEventListener("click", async () => {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            const response = await fetch("/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password }),
+            });
+
+            if (response.ok) {
+                window.location.href = "/dashboard";
+            } else {
+                const errorMsg = document.getElementById("error-msg");
+                errorMsg.textContent = "Invalid username or password";
+                errorMsg.style.display = "block";
+            }
+        });
+    </script>
+</body>
+</html>
