@@ -7,6 +7,7 @@ from app.auth.security import dummy_verify, hash_password, verify_password
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.user import UserLogin, UserRegister
+from app.services.player_ids import generate_unique_player_id
 
 router = APIRouter()
 
@@ -29,12 +30,17 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         username=user_data.username,
         email=user_data.email,
         password_hash=hash_password(user_data.password),
+        player_id=generate_unique_player_id(db),
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    return {"id": new_user.id, "username": new_user.username}
+    return {
+        "id": new_user.id,
+        "username": new_user.username,
+        "player_id": new_user.player_id,
+    }
 
 
 @router.post("/login")
@@ -66,7 +72,12 @@ def login(user_data: UserLogin, request: Request, db: Session = Depends(get_db))
 
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)):
-    return {"id": current_user.id, "username": current_user.username, "xp": current_user.xp}
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "player_id": current_user.player_id,
+        "xp": current_user.xp,
+    }
 
 
 @router.post("/logout")

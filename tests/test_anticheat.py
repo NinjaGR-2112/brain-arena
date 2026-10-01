@@ -15,6 +15,7 @@ from app.games.memory import LEVELS as MEMORY_LEVELS
 from app.games.memory import LEVEL_LENGTHS
 from app.models.user import User
 from app.services.game_sessions import get_active_game_session
+from app.services.player_ids import generate_player_id
 from app.utils.time import utcnow
 from tests.helpers import (
     decode_session_cookie,
@@ -129,7 +130,12 @@ def test_game_session_token_is_bound_to_its_owner(client, db):
     token = decode_session_cookie(client.cookies["session"])["game_token"]
     owner_id = client.get("/auth/me").json()["id"]
 
-    thief = User(username="thief", email="thief@example.com", password_hash="not-a-hash")
+    thief = User(
+        username="thief",
+        email="thief@example.com",
+        password_hash="not-a-hash",
+        player_id=generate_player_id(),
+    )
     db.add(thief)
     db.commit()
 

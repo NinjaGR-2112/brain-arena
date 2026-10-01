@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.routes import auth, pages
+from app.routes import auth, friends, pages
 
 load_dotenv()
 
@@ -59,4 +59,5 @@ async def home(request: Request):
 
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(friends.router)
 app.include_router(pages.router)

@@ -14,6 +14,13 @@
             <div class="stat"><div class="value">{{ user.total_score }}</div><div class="label">Score</div></div>
             <div class="stat"><div class="value">{{ user.games_played }}</div><div class="label">Games</div></div>
         </div>
+
+        <div class="card">
+            <h2>Your player ID</h2>
+            <p style="font-size: 1.5em; letter-spacing: 0.15em; font-weight: 700;">{{ user.player_id }}</p>
+            <p style="color: var(--text-dim);">Share it so other players can add you as a friend.
+               <a href="/friends">Manage friends</a></p>
+        </div>
     
         <h2>Play a game</h2>
         <div class="card"><a href="/games/memory">Memory</a> — Test your memory.</div>
