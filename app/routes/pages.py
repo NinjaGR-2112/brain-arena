@@ -453,3 +453,17 @@ def login_page(request: Request):
 @router.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
     return templates.TemplateResponse(request=request, name="register.html", context={})
+
+
+@router.post("/logout", response_class=HTMLResponse)
+def logout_page(request: Request):
+    """Déconnexion depuis l'interface : vide la session puis revient à l'accueil.
+
+    Le bouton du dashboard pointait auparavant vers ``/auth/logout``, qui est un
+    point d'entrée **API** : il renvoie du JSON, donc le navigateur affichait
+    ``{"message": "Logged out"}`` en guise de page. Cette route renvoie une
+    redirection 303 à la place. ``/auth/logout`` reste inchangé pour les appels
+    en JSON.
+    """
+    request.session.clear()
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)

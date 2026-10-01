@@ -85,6 +85,7 @@ def test_tampered_session_cookie_is_rejected(client):
     forged = itsdangerous.TimestampSigner("guessed-key").sign(
         base64.b64encode(json.dumps(payload).encode())
     ).decode()
+    client.cookies.clear()
     client.cookies.set("session", forged)
 
     assert client.get("/dashboard", follow_redirects=False).status_code == 303
