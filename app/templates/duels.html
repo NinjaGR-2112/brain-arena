@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Duels - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Bot duels</h1>
+
+    <div class="card">
+        <h2>Challenge a bot</h2>
+        <p style="color: var(--text-dim);">Your opponent is picked for you. Play the game as usual — your score is compared to theirs.</p>
+        <form action="/duels/start" method="post">
+            <input type="hidden" name="game_type" value="memory">
+            <button type="submit">Memory</button>
+        </form><br>
+        <form action="/duels/start" method="post">
+            <input type="hidden" name="game_type" value="reaction">
+            <button type="submit">Reaction</button>
+        </form><br>
+        <form action="/duels/start" method="post">
+            <input type="hidden" name="game_type" value="calculation">
+            <button type="submit">Calculation</button>
+        </form>
+        {% if error %}<p style="color: var(--danger);">{{ error }}</p>{% endif %}
+        {% if message %}<p style="color: var(--success);">{{ message }}</p>{% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Your record</h2>
+        <div>
+            <div class="stat"><div class="value">{{ record.won }}</div><div class="label">Won</div></div>
+            <div class="stat"><div class="value">{{ record.lost }}</div><div class="label">Lost</div></div>
+            <div class="stat"><div class="value">{{ record.drawn }}</div><div class="label">Draw</div></div>
+            <div class="stat"><div class="value">{{ record.pending }}</div><div class="label">In progress</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Recent duels</h2>
+        {% if recent %}
+        <table>
+            <tr><th>Game</th><th>Opponent</th><th>You</th><th>Them</th><th>Result</th></tr>
+            {% for duel in recent %}
+            <tr>
+                <td>{{ game_labels[duel.game_type] }}</td>
+                <td>{{ duel.bot_name }}</td>
+                <td>{{ duel.player_score if duel.player_score is not none else "—" }}</td>
+                <td>{{ duel.bot_score }}</td>
+                <td>{{ outcome_labels[duel.status] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p style="color: var(--text-dim);">No duels yet.</p>
+        {% endif %}
+    </div>
+
+    <p><a href="/dashboard">Back to dashboard</a></p>
+</div>
+</body>
+</html>

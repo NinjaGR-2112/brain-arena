@@ -7,7 +7,8 @@
 </head>
 <body>
 <div class="container">
-    <h1>Calculation - Level {{ level }}</h1>
+    <h1>Calculation</h1>
+    {% if duel %}{% include "duel_banner.html" %}{% endif %}
     <p id="timer">Time left: {{ duration }}s</p>
     <p id="correct-count">Correct: 0</p>
 
@@ -54,16 +55,18 @@
             document.getElementById("answer-input").style.display = "none";
             document.getElementById("submit-btn").style.display = "none";
 
-            const response = await fetch("/games/calculation/finish", { method: "POST" });
+            const response = await fetch("/games/calculation/finish" + duelQuery(), { method: "POST" });
             const data = await response.json();
 
             const resultArea = document.getElementById("result-area");
             resultArea.style.display = "block";
             resultArea.innerHTML = `<div class="card"><h2>Score: ${data.score}, XP earned: ${data.xp_earned}</h2><p>Correct answers: ${data.correct_count}</p></div>`;
+            resultArea.innerHTML += duelResult(data);
         }
 
         document.getElementById("submit-btn").addEventListener("click", submitAnswer);
         inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") submitAnswer(); });
     </script>
+    {% if duel %}{% include "duel_script.html" %}{% endif %}
 </body>
 </html>

@@ -7,7 +7,9 @@
 </head>
 <body>
 <div class="container">
-    <h1>Memory - Level {{ level }}</h1>
+    <h1>Memory</h1>
+
+    {% if duel %}{% include "duel_banner.html" %}{% endif %}
 
     <div class="card">
         <div id="sequence-display" style="font-size: 2.5em; text-align: center; letter-spacing: 0.2em;">
@@ -39,7 +41,7 @@
         async function submitAnswer() {
             const answer = document.getElementById("answer-input").value;
 
-            const response = await fetch("/games/memory/submit?answer=" + encodeURIComponent(answer), {
+            const response = await fetch("/games/memory/submit?answer=" + encodeURIComponent(answer) + duelQuery(), {
                 method: "POST"
             });
             const data = await response.json();
@@ -53,6 +55,7 @@
             } else {
                 resultArea.innerHTML = `Wrong sequence. Score: ${data.score}, XP earned: ${data.xp_earned}`;
             }
+            resultArea.innerHTML += duelResult(data);
         }
 
         document.getElementById("submit-btn").addEventListener("click", submitAnswer);
@@ -60,5 +63,6 @@
             if (e.key === "Enter") submitAnswer();
         });
     </script>
+    {% if duel %}{% include "duel_script.html" %}{% endif %}
 </body>
 </html>

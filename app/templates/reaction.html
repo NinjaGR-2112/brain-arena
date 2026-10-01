@@ -8,6 +8,7 @@
 <body>
 <div class="container">
     <h1>Reaction Test</h1>
+    {% if duel %}{% include "duel_banner.html" %}{% endif %}
     <p id="round-info">Round 1 / {{ total_rounds }}</p>
 
     <div class="card">
@@ -59,7 +60,7 @@
             }
 
             signalReceived = false;
-            const response = await fetch("/games/reaction/click", { method: "POST" });
+            const response = await fetch("/games/reaction/click" + duelQuery(), { method: "POST" });
             const data = await response.json();
 
             if (!response.ok) {
@@ -78,6 +79,7 @@
 
             if (data.game_finished) {
                 resultArea.innerHTML += `<div class="card"><h2>Final score: ${data.final_score}, XP earned: ${data.xp_earned}</h2></div>`;
+                resultArea.innerHTML += duelResult(data);
                 gameText.textContent = "Done!";
                 gameArea.style.background = "#2a2f3a";
             } else {
@@ -87,5 +89,6 @@
             }
         });
     </script>
+    {% if duel %}{% include "duel_script.html" %}{% endif %}
 </body>
 </html>

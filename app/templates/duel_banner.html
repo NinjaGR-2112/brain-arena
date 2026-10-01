@@ -1,0 +1,8 @@
+{# Bannière de duel, incluse dans les pages de jeu quand une partie est un duel.
+   Le niveau interne et la difficulté du bot n'apparaissent pas : ils ne
+   concernent pas le joueur. #}
+<div class="card" style="border-color: var(--accent);">
+    <h2>Duel vs {{ duel.bot_name }}</h2>
+    <p style="color: var(--text-dim);">Beat their score to win the duel.</p>
+    <p>Opponent score: <strong>{{ duel.bot_score }}</strong></p>
+</div>

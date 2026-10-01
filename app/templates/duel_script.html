@@ -1,0 +1,31 @@
+{# Helpers JavaScript de duel, partagés par les trois pages de jeu.
+   Ils sont inclus après le script de la page, donc après la définition de
+   `duel_id` : les fonctions sont appelées à l'intérieur des gestionnaires,
+   jamais au chargement. #}
+<script>
+    // Identifiant du duel en cours, injecté par le serveur.
+    const duelId = {{ duel.id }};
+    const botName = {{ duel.bot_name | tojson }};
+
+    // Rappelé dans les URL de soumission : sans duel, rien n'est ajouté.
+    function duelQuery() {
+        return duelId ? "&duel_id=" + duelId : "";
+    }
+
+    // Bloc de résultat du duel, ajouté sous le résultat de la partie.
+    function duelResult(data) {
+        if (!data.duel) {
+            return "";
+        }
+        const verdict = {
+            won: "You win the duel!",
+            lost: "You lose the duel.",
+            drawn: "Draw.",
+        }[data.duel.outcome];
+
+        return `<div class="card" style="border-color: var(--accent);">
+            <h2>${verdict}</h2>
+            <p>${botName}: ${data.duel.bot_score} — you: ${data.duel.player_score}</p>
+        </div>`;
+    }
+</script>

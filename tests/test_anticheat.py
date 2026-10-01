@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from app.games.calculation import LEVELS as CALCULATION_LEVELS
 from app.games.calculation import MAX_CORRECT_ANSWERS
 from app.games.memory import LEVELS as MEMORY_LEVELS
 from app.games.memory import LEVEL_LENGTHS
@@ -175,11 +176,15 @@ def test_memory_negative_level_is_clamped(client, db):
 
 
 def test_calculation_level_above_the_maximum_is_clamped(client, db):
-    """Régression : level=1000000 rapportait 20 000 000 points pour une réponse."""
+    """Régression : level=1000000 rapportait 20 000 000 points pour une réponse.
+
+    Le niveau n'est plus affiché dans la page (le joueur ne le choisit plus) :
+    on le vérifie donc sur la partie enregistrée côté serveur.
+    """
     register_and_login(client, "calcwhale")
 
-    page = client.get("/games/calculation?level=1000000")
-    assert "Level 3" in page.text
+    client.get("/games/calculation?level=1000000")
+    assert get_game_session(db, "calculation").level == max(CALCULATION_LEVELS)
 
     client.post("/games/calculation/answer?value=0")
     result = client.post("/games/calculation/finish").json()
