@@ -1,0 +1,13 @@
+name: Keep alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Brain Arena
+        run: curl -s -o /dev/null -w "HTTP %{http_code}\n" https://brain-arena-rtc8.onrender.com/
