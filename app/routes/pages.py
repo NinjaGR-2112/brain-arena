@@ -1,26 +1,62 @@
-import time
-import asyncio
+"""Routes des pages et des jeux.
 
-from fastapi import APIRouter, Depends, Request
+Règle de sécurité appliquée ici : **aucun état sensible ne transite par le
+client**. Le client reçoit un jeton opaque, et l'état réel de la partie
+(séquence, bonne réponse, instant du signal, compteur) vit dans la table
+``game_sessions``. Les scores sont recalculés côté serveur, et chaque partie
+n'est comptabilisée qu'une fois.
+"""
+import asyncio
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user_or_redirect
 from app.database.session import get_db
+from app.games.calculation import (
+    CALCULATION_DURATION,
+    FINISH_GRACE_SECONDS,
+    LEVELS as CALCULATION_LEVELS,
+    MAX_CORRECT_ANSWERS,
+    MIN_ANSWER_INTERVAL_SECONDS,
+    calculate_score as calculate_calculation_score,
+    generate_operation,
+    public_operation,
+)
+from app.games.levels import clamp_level
+from app.games.memory import (
+    ANSWER_WINDOW_SECONDS,
+    LEVELS as MEMORY_LEVELS,
+    generate_sequence,
+)
+from app.games.reaction import (
+    GAME_TTL_SECONDS as REACTION_GAME_TTL,
+    ROUND_WINDOW_SECONDS as REACTION_ROUND_WINDOW,
+    TOTAL_ROUNDS,
+    generate_delay,
+    score_reaction_round,
+)
 from app.models.game_result import GameResult
 from app.models.user import User
-from app.games.memory import generate_sequence
-from app.games.reaction import generate_delay, calculate_round_score
-from app.games.calculation import generate_operation, calculate_score
+from app.services.game_sessions import (
+    consume_game_session,
+    create_game_session,
+    extend_lifetime,
+    get_active_game_session,
+    load_state,
+    save_state,
+)
 from app.services.scoring import calculate_memory_score
+from app.utils.time import utcnow
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
-TOTAL_ROUNDS = 5
-CALCULATION_DURATION = 30
+NO_ACTIVE_GAME = "No active game session"
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -35,15 +71,34 @@ def dashboard(request: Request, current_user=Depends(get_current_user_or_redirec
     )
 
 
+# ---------------------------------------------------------------------------
+# Memory
+# ---------------------------------------------------------------------------
+
+
 @router.get("/games/memory", response_class=HTMLResponse)
-def memory_game(request: Request, level: int = 1, current_user=Depends(get_current_user_or_redirect)):
+def memory_game(
+    request: Request,
+    level: int = 1,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
+    level = clamp_level(level, MEMORY_LEVELS)
     sequence = generate_sequence(level)
-    request.session["memory_sequence"] = sequence
-    request.session["memory_level"] = level
-    request.session["memory_start_time"] = time.time()
+
+    # La séquence va en base, pas dans le cookie : elle était lisible en
+    # base64 depuis le navigateur.
+    request.session["game_token"] = create_game_session(
+        db,
+        user_id=current_user.id,
+        game_type="memory",
+        level=level,
+        state={"sequence": sequence},
+        ttl_seconds=ANSWER_WINDOW_SECONDS,
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -62,48 +117,63 @@ def memory_submit(
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    expected_sequence = request.session.get("memory_sequence")
-    level = request.session.get("memory_level", 1)
-    start_time = request.session.get("memory_start_time")
-
-    if expected_sequence is None or start_time is None:
-        return {"error": "No active game session"}
-
-    time_taken = time.time() - start_time
-    answer_list = [int(d) for d in answer if d.isdigit()]
-    correct = answer_list == expected_sequence
-
-    score, xp = calculate_memory_score(level, correct, time_taken)
-
-    request.session.pop("memory_sequence", None)
-    request.session.pop("memory_level", None)
-    request.session.pop("memory_start_time", None)
-
-    result = GameResult(
-        user_id=current_user.id,
-        game_type="memory",
-        score=score,
-        xp_earned=xp,
-        duration=time_taken,
+    game = get_active_game_session(
+        db, token=request.session.get("game_token"), user_id=current_user.id, game_type="memory"
     )
-    db.add(result)
+    if game is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ACTIVE_GAME)
 
+    state = load_state(game)
+    time_taken = (utcnow() - game.created_at).total_seconds()
+
+    answer_list = [int(digit) for digit in answer if digit.isdigit()]
+    correct = answer_list == state["sequence"]
+
+    score, xp = calculate_memory_score(game.level, correct, time_taken)
+
+    # La partie est close avant d'être créditée : un rejeu du même jeton
+    # échoue désormais sur get_active_game_session().
+    consume_game_session(db, game)
+
+    db.add(
+        GameResult(
+            user_id=current_user.id,
+            game_type="memory",
+            score=score,
+            xp_earned=xp,
+            duration=time_taken,
+        )
+    )
     current_user.xp += xp
     current_user.total_score += score
     current_user.games_played += 1
-
     db.commit()
 
     return {"correct": correct, "score": score, "xp_earned": xp, "time_taken": round(time_taken, 2)}
 
 
+# ---------------------------------------------------------------------------
+# Reaction
+# ---------------------------------------------------------------------------
+
+
 @router.get("/games/reaction", response_class=HTMLResponse)
-def reaction_game(request: Request, current_user=Depends(get_current_user_or_redirect)):
+def reaction_game(
+    request: Request,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    request.session["reaction_round"] = 0
-    request.session["reaction_scores"] = []
+    request.session["game_token"] = create_game_session(
+        db,
+        user_id=current_user.id,
+        game_type="reaction",
+        level=1,
+        state={"round": 0, "scores": [], "signal_at": None},
+        ttl_seconds=REACTION_GAME_TTL,
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -113,42 +183,71 @@ def reaction_game(request: Request, current_user=Depends(get_current_user_or_red
 
 
 @router.post("/games/reaction/wait")
-async def reaction_wait(request: Request, current_user=Depends(get_current_user_or_redirect)):
+async def reaction_wait(
+    request: Request,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    delay = generate_delay()
-    await asyncio.sleep(delay)
+    game = get_active_game_session(
+        db, token=request.session.get("game_token"), user_id=current_user.id, game_type="reaction"
+    )
+    if game is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ACTIVE_GAME)
 
-    signal_time = time.time()
-    request.session["reaction_signal_time"] = signal_time
+    # Le délai reste côté serveur : la réponse HTTP n'arrive qu'au moment du
+    # signal, le client ne peut donc pas connaître l'instant à l'avance.
+    await asyncio.sleep(generate_delay())
+
+    # Rechargement après l'attente : la partie a pu expirer ou être close.
+    game = get_active_game_session(
+        db, token=request.session.get("game_token"), user_id=current_user.id, game_type="reaction"
+    )
+    if game is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ACTIVE_GAME)
+
+    state = load_state(game)
+    state["signal_at"] = utcnow().isoformat()
+    save_state(db, game, state)
+    extend_lifetime(db, game, ttl_seconds=REACTION_ROUND_WINDOW)
 
     return {"signal": True}
 
 
 @router.post("/games/reaction/click")
-def reaction_click(request: Request, current_user=Depends(get_current_user_or_redirect), db: Session = Depends(get_db)):
+def reaction_click(
+    request: Request,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    signal_time = request.session.get("reaction_signal_time")
-    if signal_time is None:
-        return {"error": "No signal was sent"}
+    game = get_active_game_session(
+        db, token=request.session.get("game_token"), user_id=current_user.id, game_type="reaction"
+    )
+    if game is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ACTIVE_GAME)
 
-    click_time = time.time()
-    reaction_time_ms = (click_time - signal_time) * 1000
+    state = load_state(game)
+    if not state.get("signal_at"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No signal was sent")
 
-    round_score = calculate_round_score(reaction_time_ms)
+    signal_at = datetime.fromisoformat(state["signal_at"])
+    reaction_time_ms = (utcnow() - signal_at).total_seconds() * 1000
 
-    scores = request.session.get("reaction_scores", [])
-    scores.append(round_score)
-    request.session["reaction_scores"] = scores
+    # Le signal est consommé : un second clic sans nouveau /wait est refusé.
+    state["signal_at"] = None
 
-    round_number = request.session.get("reaction_round", 0) + 1
-    request.session["reaction_round"] = round_number
+    round_score, too_fast = score_reaction_round(reaction_time_ms)
+    state["scores"].append(round_score)
+    state["round"] += 1
+    save_state(db, game, state)
 
-    request.session.pop("reaction_signal_time", None)
-
+    round_number = state["round"]
+    scores = state["scores"]
     game_finished = round_number >= TOTAL_ROUNDS
     final_score = None
     xp_earned = None
@@ -157,25 +256,26 @@ def reaction_click(request: Request, current_user=Depends(get_current_user_or_re
         final_score = sum(scores) // len(scores)
         xp_earned = final_score // 10
 
-        result = GameResult(
-            user_id=current_user.id,
-            game_type="reaction",
-            score=final_score,
-            xp_earned=xp_earned,
-            duration=0,
+        consume_game_session(db, game)
+
+        db.add(
+            GameResult(
+                user_id=current_user.id,
+                game_type="reaction",
+                score=final_score,
+                xp_earned=xp_earned,
+                duration=0,
+            )
         )
-        db.add(result)
         current_user.xp += xp_earned
         current_user.total_score += final_score
         current_user.games_played += 1
         db.commit()
 
-        request.session.pop("reaction_round", None)
-        request.session.pop("reaction_scores", None)
-
     return {
         "reaction_time_ms": round(reaction_time_ms, 1),
         "round_score": round_score,
+        "too_fast": too_fast,
         "round_number": round_number,
         "game_finished": game_finished,
         "final_score": final_score,
@@ -183,68 +283,142 @@ def reaction_click(request: Request, current_user=Depends(get_current_user_or_re
     }
 
 
+# ---------------------------------------------------------------------------
+# Calculation
+# ---------------------------------------------------------------------------
+
+
 @router.get("/games/calculation", response_class=HTMLResponse)
-def calculation_game(request: Request, level: int = 1, current_user=Depends(get_current_user_or_redirect)):
+def calculation_game(
+    request: Request,
+    level: int = 1,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
+    level = clamp_level(level, CALCULATION_LEVELS)
     operation = generate_operation(level)
-    request.session["calc_answer"] = operation["answer"]
-    request.session["calc_level"] = level
-    request.session["calc_correct_count"] = 0
+
+    # La bonne réponse ne quitte pas le serveur ; le minuteur non plus : c'est
+    # l'expiration de la partie qui borne les 30 secondes.
+    request.session["game_token"] = create_game_session(
+        db,
+        user_id=current_user.id,
+        game_type="calculation",
+        level=level,
+        state={"answer": operation["answer"], "correct_count": 0, "last_answer_at": None},
+        ttl_seconds=CALCULATION_DURATION + FINISH_GRACE_SECONDS,
+    )
 
     return templates.TemplateResponse(
         request=request,
         name="calculation.html",
-        context={"operation": operation, "level": level, "duration": CALCULATION_DURATION},
+        context={
+            "operation": public_operation(operation),
+            "level": level,
+            "duration": CALCULATION_DURATION,
+        },
     )
 
 
 @router.post("/games/calculation/answer")
-def calculation_answer(request: Request, value: int, current_user=Depends(get_current_user_or_redirect)):
+def calculation_answer(
+    request: Request,
+    value: int,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    expected = request.session.get("calc_answer")
-    level = request.session.get("calc_level", 1)
-    correct_count = request.session.get("calc_correct_count", 0)
+    game = get_active_game_session(
+        db, token=request.session.get("game_token"), user_id=current_user.id, game_type="calculation"
+    )
+    if game is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ACTIVE_GAME)
 
-    if value == expected:
-        correct_count += 1
-        request.session["calc_correct_count"] = correct_count
+    state = load_state(game)
+    now = utcnow()
 
-    operation = generate_operation(level)
-    request.session["calc_answer"] = operation["answer"]
+    last_answer_at = state.get("last_answer_at")
+    too_fast = (
+        last_answer_at is not None
+        and (now - datetime.fromisoformat(last_answer_at)).total_seconds()
+        < MIN_ANSWER_INTERVAL_SECONDS
+    )
 
-    return {"correct": value == expected, "correct_count": correct_count, "next_operation": operation}
+    correct = False
+    if not too_fast:
+        correct = value == state["answer"]
+        if correct:
+            state["correct_count"] = min(state["correct_count"] + 1, MAX_CORRECT_ANSWERS)
+        state["last_answer_at"] = now.isoformat()
+
+    next_operation = generate_operation(game.level)
+    state["answer"] = next_operation["answer"]
+    save_state(db, game, state)
+
+    return {
+        "correct": correct,
+        "too_fast": too_fast,
+        "correct_count": state["correct_count"],
+        "next_operation": public_operation(next_operation),
+    }
 
 
 @router.post("/games/calculation/finish")
-def calculation_finish(request: Request, current_user=Depends(get_current_user_or_redirect), db: Session = Depends(get_db)):
+def calculation_finish(
+    request: Request,
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    correct_count = request.session.get("calc_correct_count", 0)
-    level = request.session.get("calc_level", 1)
+    # Sans partie active, plus de crédit : cet appel créait auparavant une
+    # partie complète (score 0) et incrémentait games_played à chaque requête.
+    game = get_active_game_session(
+        db, token=request.session.get("game_token"), user_id=current_user.id, game_type="calculation"
+    )
+    if game is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NO_ACTIVE_GAME)
 
-    score, xp = calculate_score(correct_count, level)
+    correct_count = load_state(game)["correct_count"]
+    score, xp = calculate_calculation_score(correct_count, game.level)
 
-    result = GameResult(user_id=current_user.id, game_type="calculation", score=score, xp_earned=xp, duration=CALCULATION_DURATION)
-    db.add(result)
+    consume_game_session(db, game)
+
+    db.add(
+        GameResult(
+            user_id=current_user.id,
+            game_type="calculation",
+            score=score,
+            xp_earned=xp,
+            duration=CALCULATION_DURATION,
+        )
+    )
     current_user.xp += xp
     current_user.total_score += score
     current_user.games_played += 1
     db.commit()
 
-    request.session.pop("calc_answer", None)
-    request.session.pop("calc_level", None)
-    request.session.pop("calc_correct_count", None)
-
     return {"correct_count": correct_count, "score": score, "xp_earned": xp}
 
 
+# ---------------------------------------------------------------------------
+# Leaderboard et pages publiques
+# ---------------------------------------------------------------------------
+
+
 @router.get("/leaderboard", response_class=HTMLResponse)
-def leaderboard(request: Request, page: int = 1, current_user=Depends(get_current_user_or_redirect), db: Session = Depends(get_db)):
+def leaderboard(
+    request: Request,
+    page: int = Query(1, ge=1),
+    current_user=Depends(get_current_user_or_redirect),
+    db: Session = Depends(get_db),
+):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
@@ -261,7 +435,13 @@ def leaderboard(request: Request, page: int = 1, current_user=Depends(get_curren
     return templates.TemplateResponse(
         request=request,
         name="leaderboard.html",
-        context={"users": users, "page": page, "your_rank": your_rank, "start_rank": offset + 1},
+        context={
+            "users": users,
+            "page": page,
+            "your_rank": your_rank,
+            "start_rank": offset + 1,
+            "total_pages": max(1, -(-len(all_ranked) // per_page)),
+        },
     )
 
 

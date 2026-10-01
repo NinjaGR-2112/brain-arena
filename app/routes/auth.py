@@ -1,15 +1,12 @@
-from fastapi import Request
-from app.schemas.user import UserLogin
-from app.auth.security import verify_password
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_current_user
+from app.auth.security import dummy_verify, hash_password, verify_password
 from app.database.session import get_db
 from app.models.user import User
-from app.schemas.user import UserRegister
-from app.auth.security import hash_password
+from app.schemas.user import UserLogin, UserRegister
 
 router = APIRouter()
 
@@ -46,7 +43,17 @@ def login(user_data: UserLogin, request: Request, db: Session = Depends(get_db))
         select(User).where(User.username == user_data.username)
     ).scalar_one_or_none()
 
-    if not user or not verify_password(user_data.password, user.password_hash):
+    if not user:
+        # Même message d'erreur que ci-dessous (pas d'énumération de comptes),
+        # et même coût en temps : sans ce hachage factice, ce chemin répondait
+        # en ~4 ms contre ~231 ms pour un compte existant.
+        dummy_verify(user_data.password)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    if not verify_password(user_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -56,11 +63,11 @@ def login(user_data: UserLogin, request: Request, db: Session = Depends(get_db))
 
     return {"id": user.id, "username": user.username}
 
-from app.auth.dependencies import get_current_user
 
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)):
     return {"id": current_user.id, "username": current_user.username, "xp": current_user.xp}
+
 
 @router.post("/logout")
 def logout(request: Request):

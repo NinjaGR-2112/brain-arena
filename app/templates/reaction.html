@@ -62,7 +62,19 @@
             const response = await fetch("/games/reaction/click", { method: "POST" });
             const data = await response.json();
 
-            resultArea.innerHTML += `<div class="card">Round ${data.round_number}: ${data.reaction_time_ms} ms (score: ${data.round_score})</div>`;
+            if (!response.ok) {
+                resultArea.innerHTML += `<div class="card">This round is no longer valid. Reload to play again.</div>`;
+                gameText.textContent = "Reload to play again";
+                gameArea.style.background = "#2a2f3a";
+                return;
+            }
+
+            // Un temps sous le seuil humain n'est pas crédité : le serveur le
+            // signale pour que le joueur comprenne pourquoi le round vaut 0.
+            const label = data.too_fast
+                ? `${data.reaction_time_ms} ms — too fast to be human, round not counted`
+                : `${data.reaction_time_ms} ms (score: ${data.round_score})`;
+            resultArea.innerHTML += `<div class="card">Round ${data.round_number}: ${label}</div>`;
 
             if (data.game_finished) {
                 resultArea.innerHTML += `<div class="card"><h2>Final score: ${data.final_score}, XP earned: ${data.xp_earned}</h2></div>`;

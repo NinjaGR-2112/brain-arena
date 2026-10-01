@@ -21,6 +21,20 @@
 </div>
 
     <script>
+        // FastAPI renvoie `detail` sous deux formes : une chaîne pour les
+        // erreurs métier (400/401), une liste d'objets pour les erreurs de
+        // validation (422). Ne traiter que la première affichait
+        // "[object Object]" à l'utilisateur.
+        function extractMessage(data) {
+            if (typeof data.detail === "string") {
+                return data.detail;
+            }
+            if (Array.isArray(data.detail) && data.detail.length) {
+                return data.detail.map((item) => item.msg).join("\n");
+            }
+            return "Registration failed";
+        }
+
         document.getElementById("register-btn").addEventListener("click", async () => {
             const username = document.getElementById("username").value;
             const email = document.getElementById("email").value;
@@ -44,7 +58,8 @@
             } else {
                 const errorMsg = document.getElementById("error-msg");
                 const data = await response.json();
-                errorMsg.textContent = data.detail || "Registration failed";
+                errorMsg.textContent = extractMessage(data);
+                errorMsg.style.whiteSpace = "pre-line";
                 errorMsg.style.display = "block";
             }
         });
