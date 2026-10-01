@@ -30,6 +30,7 @@ if config.config_file_name is not None:
 from app.database.base import Base
 from app.models.user import User  # noqa
 from app.models.game_result import GameResult  # noqa
+from app.models.game_session import GameSession  # noqa
 
 target_metadata = Base.metadata
 
