@@ -42,6 +42,7 @@ from app.games.reaction import (
 )
 from app.models.game_result import GameResult
 from app.models.user import User
+from app.routes.duels import duel_or_redirect, settle_duel_outcome
 from app.services.game_sessions import (
     consume_game_session,
     create_game_session,
@@ -80,13 +81,21 @@ def dashboard(request: Request, current_user=Depends(get_current_user_or_redirec
 def memory_game(
     request: Request,
     level: int = 1,
+    duel_id: int | None = None,
     current_user=Depends(get_current_user_or_redirect),
     db: Session = Depends(get_db),
 ):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    level = clamp_level(level, MEMORY_LEVELS)
+    duel, redirect = duel_or_redirect(db, request, duel_id, current_user, "memory")
+    if redirect is not None:
+        return redirect
+
+    # En duel, le niveau est celui du duel, partagé avec le bot : le paramètre
+    # d'URL est ignoré, sinon un joueur pourrait gonfler son score en demande
+    # un niveau plus élevé que celui de son adversaire.
+    level = duel.level if duel is not None else clamp_level(level, MEMORY_LEVELS)
     sequence = generate_sequence(level)
 
     # La séquence va en base, pas dans le cookie : elle était lisible en
@@ -103,7 +112,7 @@ def memory_game(
     return templates.TemplateResponse(
         request=request,
         name="memory.html",
-        context={"sequence": sequence, "level": level},
+        context={"sequence": sequence, "level": level, "duel": duel},
     )
 
 
@@ -111,6 +120,7 @@ def memory_game(
 def memory_submit(
     request: Request,
     answer: str,
+    duel_id: int | None = None,
     current_user=Depends(get_current_user_or_redirect),
     db: Session = Depends(get_db),
 ):
@@ -149,7 +159,19 @@ def memory_submit(
     current_user.games_played += 1
     db.commit()
 
-    return {"correct": correct, "score": score, "xp_earned": xp, "time_taken": round(time_taken, 2)}
+    duel = None
+    if duel_id is not None:
+        duel, redirect = duel_or_redirect(db, request, duel_id, current_user, "memory")
+        if redirect is not None:
+            return redirect
+
+    return {
+        "correct": correct,
+        "score": score,
+        "xp_earned": xp,
+        "time_taken": round(time_taken, 2),
+        "duel": settle_duel_outcome(db, duel, current_user, score),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -160,11 +182,16 @@ def memory_submit(
 @router.get("/games/reaction", response_class=HTMLResponse)
 def reaction_game(
     request: Request,
+    duel_id: int | None = None,
     current_user=Depends(get_current_user_or_redirect),
     db: Session = Depends(get_db),
 ):
     if isinstance(current_user, RedirectResponse):
         return current_user
+
+    duel, redirect = duel_or_redirect(db, request, duel_id, current_user, "reaction")
+    if redirect is not None:
+        return redirect
 
     request.session["game_token"] = create_game_session(
         db,
@@ -178,7 +205,7 @@ def reaction_game(
     return templates.TemplateResponse(
         request=request,
         name="reaction.html",
-        context={"total_rounds": TOTAL_ROUNDS},
+        context={"total_rounds": TOTAL_ROUNDS, "duel": duel},
     )
 
 
@@ -219,6 +246,7 @@ async def reaction_wait(
 @router.post("/games/reaction/click")
 def reaction_click(
     request: Request,
+    duel_id: int | None = None,
     current_user=Depends(get_current_user_or_redirect),
     db: Session = Depends(get_db),
 ):
@@ -272,6 +300,14 @@ def reaction_click(
         current_user.games_played += 1
         db.commit()
 
+    # Le duel ne se règle qu'au dernier round : avant, le score du joueur
+    # n'est pas connu.
+    duel = None
+    if game_finished and duel_id is not None:
+        duel, redirect = duel_or_redirect(db, request, duel_id, current_user, "reaction")
+        if redirect is not None:
+            return redirect
+
     return {
         "reaction_time_ms": round(reaction_time_ms, 1),
         "round_score": round_score,
@@ -280,6 +316,7 @@ def reaction_click(
         "game_finished": game_finished,
         "final_score": final_score,
         "xp_earned": xp_earned,
+        "duel": settle_duel_outcome(db, duel, current_user, final_score),
     }
 
 
@@ -292,13 +329,18 @@ def reaction_click(
 def calculation_game(
     request: Request,
     level: int = 1,
+    duel_id: int | None = None,
     current_user=Depends(get_current_user_or_redirect),
     db: Session = Depends(get_db),
 ):
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    level = clamp_level(level, CALCULATION_LEVELS)
+    duel, redirect = duel_or_redirect(db, request, duel_id, current_user, "calculation")
+    if redirect is not None:
+        return redirect
+
+    level = duel.level if duel is not None else clamp_level(level, CALCULATION_LEVELS)
     operation = generate_operation(level)
 
     # La bonne réponse ne quitte pas le serveur ; le minuteur non plus : c'est
@@ -319,6 +361,7 @@ def calculation_game(
             "operation": public_operation(operation),
             "level": level,
             "duration": CALCULATION_DURATION,
+            "duel": duel,
         },
     )
 
@@ -371,6 +414,7 @@ def calculation_answer(
 @router.post("/games/calculation/finish")
 def calculation_finish(
     request: Request,
+    duel_id: int | None = None,
     current_user=Depends(get_current_user_or_redirect),
     db: Session = Depends(get_db),
 ):
@@ -404,7 +448,18 @@ def calculation_finish(
     current_user.games_played += 1
     db.commit()
 
-    return {"correct_count": correct_count, "score": score, "xp_earned": xp}
+    duel = None
+    if duel_id is not None:
+        duel, redirect = duel_or_redirect(db, request, duel_id, current_user, "calculation")
+        if redirect is not None:
+            return redirect
+
+    return {
+        "correct_count": correct_count,
+        "score": score,
+        "xp_earned": xp,
+        "duel": settle_duel_outcome(db, duel, current_user, score),
+    }
 
 
 # ---------------------------------------------------------------------------

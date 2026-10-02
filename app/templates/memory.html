@@ -7,7 +7,9 @@
 </head>
 <body>
 <div class="container">
-    <h1>Memory - Level {{ level }}</h1>
+    <h1>Memory</h1>
+
+    {% if duel %}{% include "duel_banner.html" %}{% endif %}
 
     <div class="card">
         <div id="sequence-display" style="font-size: 2.5em; text-align: center; letter-spacing: 0.2em;">
@@ -16,7 +18,7 @@
 
         <div id="answer-area" style="display: none;">
             <p>Enter the sequence you saw:</p>
-            <input type="text" id="answer-input" inputmode="numeric">
+            <input type="text" id="answer-input" inputmode="numeric" autofocus>
             <button id="submit-btn">Submit</button>
         </div>
 
@@ -30,12 +32,16 @@
         setTimeout(() => {
             document.getElementById("sequence-display").style.display = "none";
             document.getElementById("answer-area").style.display = "block";
+            document.getElementById("answer-input").focus();
         }, 3000);
 
-        document.getElementById("submit-btn").addEventListener("click", async () => {
+        // Sortie d'un gestionnaire anonyme : la meme fonction sert au clic et
+        // a la touche Entree, comme dans calculation.html. Sans cela, il
+        // fallait cliquer au bouton alors que le focus est deja dans le champ.
+        async function submitAnswer() {
             const answer = document.getElementById("answer-input").value;
 
-            const response = await fetch("/games/memory/submit?answer=" + encodeURIComponent(answer), {
+            const response = await fetch("/games/memory/submit?answer=" + encodeURIComponent(answer) + duelQuery(), {
                 method: "POST"
             });
             const data = await response.json();
@@ -49,7 +55,14 @@
             } else {
                 resultArea.innerHTML = `Wrong sequence. Score: ${data.score}, XP earned: ${data.xp_earned}`;
             }
+            resultArea.innerHTML += duelResult(data);
+        }
+
+        document.getElementById("submit-btn").addEventListener("click", submitAnswer);
+        document.getElementById("answer-input").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") submitAnswer();
         });
     </script>
+    {% if duel %}{% include "duel_script.html" %}{% endif %}
 </body>
 </html>

@@ -10,11 +10,13 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from app.games.calculation import LEVELS as CALCULATION_LEVELS
 from app.games.calculation import MAX_CORRECT_ANSWERS
 from app.games.memory import LEVELS as MEMORY_LEVELS
 from app.games.memory import LEVEL_LENGTHS
 from app.models.user import User
 from app.services.game_sessions import get_active_game_session
+from app.services.player_ids import generate_player_id
 from app.utils.time import utcnow
 from tests.helpers import (
     decode_session_cookie,
@@ -129,7 +131,12 @@ def test_game_session_token_is_bound_to_its_owner(client, db):
     token = decode_session_cookie(client.cookies["session"])["game_token"]
     owner_id = client.get("/auth/me").json()["id"]
 
-    thief = User(username="thief", email="thief@example.com", password_hash="not-a-hash")
+    thief = User(
+        username="thief",
+        email="thief@example.com",
+        password_hash="not-a-hash",
+        player_id=generate_player_id(),
+    )
     db.add(thief)
     db.commit()
 
@@ -169,11 +176,15 @@ def test_memory_negative_level_is_clamped(client, db):
 
 
 def test_calculation_level_above_the_maximum_is_clamped(client, db):
-    """Régression : level=1000000 rapportait 20 000 000 points pour une réponse."""
+    """Régression : level=1000000 rapportait 20 000 000 points pour une réponse.
+
+    Le niveau n'est plus affiché dans la page (le joueur ne le choisit plus) :
+    on le vérifie donc sur la partie enregistrée côté serveur.
+    """
     register_and_login(client, "calcwhale")
 
-    page = client.get("/games/calculation?level=1000000")
-    assert "Level 3" in page.text
+    client.get("/games/calculation?level=1000000")
+    assert get_game_session(db, "calculation").level == max(CALCULATION_LEVELS)
 
     client.post("/games/calculation/answer?value=0")
     result = client.post("/games/calculation/finish").json()

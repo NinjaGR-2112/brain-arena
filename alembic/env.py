@@ -29,6 +29,8 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 from app.database.base import Base
 from app.models.user import User  # noqa
+from app.models.friendship import Friendship  # noqa
+from app.models.duel import Duel  # noqa
 from app.models.game_result import GameResult  # noqa
 from app.models.game_session import GameSession  # noqa
 

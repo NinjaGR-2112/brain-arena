@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Friends - Brain Arena</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Friends</h1>
+
+    <div class="card">
+        <h2>Your player ID</h2>
+        <p style="font-size: 1.6em; letter-spacing: 0.15em; font-weight: 700;">
+            {{ user.player_id }}
+        </p>
+        <p style="color: var(--text-dim);">Share it: other players add you with this ID.</p>
+    </div>
+
+    <div class="card">
+        <h2>Add a friend</h2>
+        <form action="/friends/request" method="post">
+            <input type="text" name="player_id" placeholder="ABCD-2345"
+                   maxlength="12" style="width: 12rem; letter-spacing: 0.1em; text-transform: uppercase;">
+            <button type="submit">Add</button>
+        </form>
+        {% if error %}<p style="color: var(--danger);">{{ error }}</p>{% endif %}
+        {% if message %}<p style="color: var(--success);">{{ message }}</p>{% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Friends ({{ friends|length }})</h2>
+        {% if friends %}
+        <table>
+            <tr><th>Player</th><th>ID</th><th></th></tr>
+            {% for friendship, other in friends %}
+            <tr>
+                <td>{{ other.username }}</td>
+                <td>{{ other.player_id }}</td>
+                <td>
+                    <form action="/friends/{{ friendship.id }}/remove" method="post">
+                        <button type="submit">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p style="color: var(--text-dim);">No friends yet. Add one with their player ID.</p>
+        {% endif %}
+    </div>
+
+    {% if incoming %}
+    <div class="card">
+        <h2>Requests received</h2>
+        <table>
+            <tr><th>Player</th><th>ID</th><th></th></tr>
+            {% for friendship, other in incoming %}
+            <tr>
+                <td>{{ other.username }}</td>
+                <td>{{ other.player_id }}</td>
+                <td style="white-space: nowrap;">
+                    <form action="/friends/{{ friendship.id }}/accept" method="post" style="display: inline;">
+                        <button type="submit">Accept</button>
+                    </form>
+                    <form action="/friends/{{ friendship.id }}/remove" method="post" style="display: inline;">
+                        <button type="submit">Decline</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    {% if outgoing %}
+    <div class="card">
+        <h2>Requests sent</h2>
+        <table>
+            <tr><th>Player</th><th>ID</th><th></th></tr>
+            {% for friendship, other in outgoing %}
+            <tr>
+                <td>{{ other.username }}</td>
+                <td>{{ other.player_id }}</td>
+                <td>
+                    <form action="/friends/{{ friendship.id }}/remove" method="post">
+                        <button type="submit">Cancel</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    <p><a href="/dashboard">Back to dashboard</a></p>
+</div>
+</body>
+</html>
